@@ -1,0 +1,67 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+
+// Storing particle data as Particle_struct for GPU calculations.
+struct Particle_struct
+{
+	float3 position_vector;
+	float3 velocity_vector;
+	float3 force_vector;
+	float mass;
+
+};
+
+
+// storing Particle_struct data as structured buffer
+RWStructuredBuffer<Particle_struct> particleBuffer;
+
+// threading
+[numthreads(10, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	
+	float3 final_force;
+	float delta_time = 0.1;
+	float gra_const = 100;
+	for (int a = 0; a < particleBuffer.Length; a++) {
+
+		// check if not same particle, cus we do not want to calculate forces between same particles.
+		if (particleBuffer[a].position_vector.x != particleBuffer[id.x].position_vector.x && particleBuffer[a].position_vector.y != particleBuffer[id.x].position_vector.y && particleBuffer[a].position_vector.z != particleBuffer[id.x].position_vector.z)
+		{
+			float3 direction = particleBuffer[a].position_vector - particleBuffer[id.x].position_vector; // force direction
+			float distance = sqrt(direction.x* direction.x + direction.y * direction.y + direction.z * direction.z); // distance between particles
+			float3 force_mag = 100 * 1 * 1 / pow(distance, 2); // gravitational force calcultion
+
+
+			float3 particle_force_vector = normalize(direction) * force_mag;
+			//check collision
+			
+			if (distance <= 3.0) {
+				// elastic collision
+				final_force += -particle_force_vector;
+
+				//damp velocity due to energy loss
+				particleBuffer[id.x].velocity_vector = 0.99 * particleBuffer[id.x].velocity_vector;
+			}
+			else
+			{
+				// sum all vectorial forces
+				final_force += particle_force_vector;
+			}
+
+		}
+	}
+
+
+
+	// correct forces
+	particleBuffer[id.x].force_vector = final_force;
+
+	//update position and velocity
+	particleBuffer[id.x].position_vector += particleBuffer[id.x].velocity_vector * delta_time + 0.5f * particleBuffer[id.x].force_vector / particleBuffer[id.x].mass * (delta_time * delta_time);
+	particleBuffer[id.x].velocity_vector += particleBuffer[id.x].force_vector / particleBuffer[id.x].mass * delta_time;
+
+
+}
+
